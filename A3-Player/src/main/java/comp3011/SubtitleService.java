@@ -1,173 +1,237 @@
-
 package comp3011;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+
 import org.bytedeco.javacv.FFmpegFrameGrabber;
 import org.bytedeco.javacv.Frame;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+/**
+ * Extracts the audio of a video, sends it to the local subtitle web server in
+ * chunks, and returns timed subtitle segments as each chunk completes.
+ */
 public class SubtitleService {
 
     public record SubtitleSegment(double start, double end, String text) {}
 
-    private final String serverUrl = "http://localhost:8080/api/v1/subtitles";
+    private static final String SERVER_URL = "http://localhost:8080/api/v1/subtitles";
+    private static final int SAMPLE_RATE = 16000;      // 16 kHz mono keeps uploads small (~1.9 MB/min)
+    private static final int CHANNELS = 1;
+    private static final int CHUNK_SECONDS = 120;      // ~3.8 MB per request, well under the 25 MB limit
+    private static final int MAX_LINE_CHARS = 42;
+    private static final int MAX_LINES = 2;
+    private static final double MIN_SHOW_SECONDS = 1.0;
+    private static final double MAX_SHOW_SECONDS = 7.0;
 
-    public void transcribe(File videoFile, Consumer<List<SubtitleSegment>> onComplete) {
+    private final HttpClient client = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(5))
+            .build();
+    private final ObjectMapper mapper = new ObjectMapper();
+
+    /**
+     * Runs on a background thread. onSegments is called (off the FX thread) after each chunk
+     * with the new segments; onError is called once if anything fails.
+     */
+    public void transcribe(File videoFile, Consumer<List<SubtitleSegment>> onSegments, Consumer<Exception> onError) {
         Thread thread = new Thread(() -> {
-            File audioFile = null;
-
             try {
-                audioFile = extractAudio(videoFile);
-                List<SubtitleSegment> subtitles = sendToServer(audioFile);
-
-                onComplete.accept(subtitles);
-
+                extractAndSend(videoFile, onSegments);
             } catch (Exception e) {
                 System.out.println("Subtitle error: " + e.getMessage());
-            } finally {
-                if (audioFile != null) {
-                    audioFile.delete();
-                }
+                onError.accept(e);
             }
-        });
-
+        }, "subtitle-transcriber");
         thread.setDaemon(true);
         thread.start();
     }
 
-    private File extractAudio(File videoFile) throws Exception {
-        File audioFile = File.createTempFile("subtitle-audio-", ".wav");
-        File rawFile = File.createTempFile("subtitle-audio-", ".pcm");
+    private void extractAndSend(File videoFile, Consumer<List<SubtitleSegment>> onSegments) throws Exception {
+        final int bytesPerChunk = SAMPLE_RATE * CHANNELS * 2 * CHUNK_SECONDS;
+        AudioPlayer converter = new AudioPlayer();
+        ByteArrayOutputStream chunk = new ByteArrayOutputStream(bytesPerChunk);
+        int chunkIndex = 0;
+        boolean sawAudio = false;
 
         FFmpegFrameGrabber grabber = new FFmpegFrameGrabber(videoFile);
-        AudioPlayer audioPlayer = new AudioPlayer();
-
-        int sampleRate;
-        int channels;
-        long totalBytes = 0;
-
-        try (var output = new java.io.FileOutputStream(rawFile)) {
-
+        grabber.setSampleRate(SAMPLE_RATE);
+        grabber.setAudioChannels(CHANNELS);
+        try {
             grabber.start();
-
-            sampleRate = grabber.getSampleRate();
-            channels = grabber.getAudioChannels();
-
             Frame frame;
-
             while ((frame = grabber.grabSamples()) != null) {
-                byte[] samples = audioPlayer.copySamples(frame);
-
-                if (samples != null) {
-                    output.write(samples);
-                    totalBytes += samples.length;
+                byte[] samples = converter.copySamples(frame);
+                if (samples == null || samples.length == 0) {
+                    continue;
+                }
+                sawAudio = true;
+                chunk.write(samples);
+                if (chunk.size() >= bytesPerChunk) {
+                    sendChunk(chunk.toByteArray(), chunkIndex * (double) CHUNK_SECONDS, onSegments);
+                    chunk.reset();
+                    chunkIndex++;
                 }
             }
-
         } finally {
-            grabber.stop();
-            grabber.release();
-        }
-
-        if (totalBytes == 0) {
-            rawFile.delete();
-            audioFile.delete();
-            throw new IOException("No audio found in video");
-        }
-
-        try (var output = new java.io.FileOutputStream(audioFile);
-             var input = new java.io.FileInputStream(rawFile)) {
-
-            int byteRate = sampleRate * channels * 2;
-            int blockAlign = channels * 2;
-
-            output.write(new byte[] {
-                'R','I','F','F',
-                (byte)(totalBytes + 36),
-                (byte)((totalBytes + 36) >> 8),
-                (byte)((totalBytes + 36) >> 16),
-                (byte)((totalBytes + 36) >> 24),
-                'W','A','V','E',
-                'f','m','t',' ',
-                16,0,0,0,
-                1,0,
-                (byte)channels,0,
-                (byte)sampleRate,
-                (byte)(sampleRate >> 8),
-                (byte)(sampleRate >> 16),
-                (byte)(sampleRate >> 24),
-                (byte)byteRate,
-                (byte)(byteRate >> 8),
-                (byte)(byteRate >> 16),
-                (byte)(byteRate >> 24),
-                (byte)blockAlign,0,
-                16,0,
-                'd','a','t','a',
-                (byte)totalBytes,
-                (byte)(totalBytes >> 8),
-                (byte)(totalBytes >> 16),
-                (byte)(totalBytes >> 24)
-            });
-
-            input.transferTo(output);
-        }
-
-        rawFile.delete();
-        return audioFile;
-    }
-
-    private List<SubtitleSegment> sendToServer(File audioFile) throws Exception {
-        String boundary = "----JavaBoundary123456";
-
-        java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
-
-        String fileName = audioFile.getName();
-
-        byte[] fileBytes = java.nio.file.Files.readAllBytes(audioFile.toPath());
-
-        java.io.ByteArrayOutputStream body = new java.io.ByteArrayOutputStream();
-
-        body.write(("--" + boundary + "\r\n").getBytes());
-        body.write(("Content-Disposition: form-data; name=\"audio\"; filename=\"" + fileName + "\"\r\n").getBytes());
-        body.write(("Content-Type: audio/wav\r\n\r\n").getBytes());
-        body.write(fileBytes);
-        body.write(("\r\n--" + boundary + "--\r\n").getBytes());
-
-        java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
-                .uri(java.net.URI.create(serverUrl))
-                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
-                .POST(java.net.http.HttpRequest.BodyPublishers.ofByteArray(body.toByteArray()))
-                .build();
-
-        java.net.http.HttpResponse<String> response = client.send(
-                request,
-                java.net.http.HttpResponse.BodyHandlers.ofString()
-        );
-
-        if (response.statusCode() != 200) {
-            throw new IOException("Server returned: " + response.statusCode() + " " + response.body());
-        }
-
-        com.fasterxml.jackson.databind.ObjectMapper mapper =
-                new com.fasterxml.jackson.databind.ObjectMapper();
-
-        com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(response.body());
-
-        java.util.ArrayList<SubtitleSegment> result = new java.util.ArrayList<>();
-
-        for (com.fasterxml.jackson.databind.JsonNode segment : root.path("segments")) {
-
-            double start = segment.path("start").asDouble();
-            double end = segment.path("end").asDouble();
-            String text = segment.path("text").asText("");
-
-            if (!text.isBlank()) {
-                result.add(new SubtitleSegment(start, end, text.trim()));
+            try {
+                grabber.stop();
+                grabber.release();
+            } catch (Exception ignored) {
+                // media may already be gone (e.g. USB removed)
             }
         }
 
-        return result;
+        if (chunk.size() > 0) {
+            sendChunk(chunk.toByteArray(), chunkIndex * (double) CHUNK_SECONDS, onSegments);
+        }
+        if (!sawAudio) {
+            throw new IOException("No audio found in video");
+        }
+    }
+
+    private void sendChunk(byte[] pcm, double offsetSeconds, Consumer<List<SubtitleSegment>> onSegments)
+            throws Exception {
+        byte[] wav = toWav(pcm);
+        String boundary = "----SubtitleBoundary" + System.nanoTime();
+
+        ByteArrayOutputStream body = new ByteArrayOutputStream();
+        body.write(("--" + boundary + "\r\n").getBytes());
+        body.write(("Content-Disposition: form-data; name=\"audio\"; filename=\"chunk.wav\"\r\n").getBytes());
+        body.write("Content-Type: audio/wav\r\n\r\n".getBytes());
+        body.write(wav);
+        body.write(("\r\n--" + boundary + "--\r\n").getBytes());
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(SERVER_URL))
+                .timeout(Duration.ofSeconds(120))
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray()))
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() != 200) {
+            throw new IOException("Server returned " + response.statusCode() + ": " + response.body());
+        }
+
+        List<SubtitleSegment> result = new ArrayList<>();
+        for (JsonNode segment : mapper.readTree(response.body()).path("segments")) {
+            String text = segment.path("text").asText("").trim();
+            if (!text.isBlank()) {
+                double start = segment.path("start").asDouble() + offsetSeconds;
+                double end = segment.path("end").asDouble() + offsetSeconds;
+                result.addAll(splitIntoSubtitles(start, end, text));
+            }
+        }
+        onSegments.accept(result);
+    }
+
+    private static byte[] toWav(byte[] pcm) throws IOException {
+        int byteRate = SAMPLE_RATE * CHANNELS * 2;
+        ByteArrayOutputStream out = new ByteArrayOutputStream(pcm.length + 44);
+        out.write("RIFF".getBytes());
+        writeIntLE(out, pcm.length + 36);
+        out.write("WAVEfmt ".getBytes());
+        writeIntLE(out, 16);
+        writeShortLE(out, 1);
+        writeShortLE(out, CHANNELS);
+        writeIntLE(out, SAMPLE_RATE);
+        writeIntLE(out, byteRate);
+        writeShortLE(out, CHANNELS * 2);
+        writeShortLE(out, 16);
+        out.write("data".getBytes());
+        writeIntLE(out, pcm.length);
+        out.write(pcm);
+        return out.toByteArray();
+    }
+
+    private static void writeIntLE(ByteArrayOutputStream out, int v) {
+        out.write(v); out.write(v >> 8); out.write(v >> 16); out.write(v >> 24);
+    }
+
+    private static void writeShortLE(ByteArrayOutputStream out, int v) {
+        out.write(v); out.write(v >> 8);
+    }
+
+    // ---- Subtitle formatting: <=42 chars/line, <=2 lines, 1-7 s on screen ----
+
+    /** Splits one Whisper segment into displayable subtitles with timings proportional to text length. */
+    static List<SubtitleSegment> splitIntoSubtitles(double start, double end, String text) {
+        List<String> pieces = new ArrayList<>();
+        String remaining = text.trim();
+        int maxChars = MAX_LINE_CHARS * MAX_LINES;
+        while (remaining.length() > maxChars) {
+            int cut = bestBreak(remaining, maxChars);
+            pieces.add(remaining.substring(0, cut).trim());
+            remaining = remaining.substring(cut).trim();
+        }
+        if (!remaining.isEmpty()) {
+            pieces.add(remaining);
+        }
+
+        double duration = Math.max(end - start, 0.1);
+        int totalChars = pieces.stream().mapToInt(String::length).sum();
+        List<SubtitleSegment> out = new ArrayList<>();
+        double cursor = start;
+        for (String piece : pieces) {
+            double share = duration * piece.length() / Math.max(totalChars, 1);
+            double shown = Math.min(MAX_SHOW_SECONDS, Math.max(MIN_SHOW_SECONDS, share));
+            out.add(new SubtitleSegment(cursor, cursor + shown, wrapLines(piece)));
+            cursor += share;
+        }
+        return out;
+    }
+
+    /** Prefers breaking after sentence punctuation, then commas, then spaces, within the limit. */
+    private static int bestBreak(String s, int limit) {
+        int limitIdx = Math.min(limit, s.length() - 1);
+        for (String set : new String[] {".!?", ",;:", " "}) {
+            for (int i = limitIdx; i > limit / 3; i--) {
+                if (set.indexOf(s.charAt(i - 1)) >= 0 || (set.equals(" ") && s.charAt(i) == ' ')) {
+                    return i;
+                }
+            }
+        }
+        return limitIdx;
+    }
+
+    /** Breaks text into at most two lines of at most 42 chars, preferring a break after punctuation. */
+    private static String wrapLines(String text) {
+        if (text.length() <= MAX_LINE_CHARS) {
+            return text;
+        }
+        int best = -1;
+        int mid = text.length() / 2;
+        for (int i = 1; i < text.length(); i++) {
+            if (i > MAX_LINE_CHARS || text.length() - i > MAX_LINE_CHARS + 1) {
+                continue;
+            }
+            boolean afterPunct = ",;:.!?".indexOf(text.charAt(i - 1)) >= 0 && text.charAt(i) == ' ';
+            boolean atSpace = text.charAt(i) == ' ';
+            if (afterPunct || atSpace) {
+                int score = Math.abs(i - mid) + (afterPunct ? 0 : 8);
+                if (best < 0 || score < Math.abs(best - mid) + (isPunctBreak(text, best) ? 0 : 8)) {
+                    best = i;
+                }
+            }
+        }
+        if (best < 0) {
+            best = Math.min(MAX_LINE_CHARS, text.length() - 1);
+        }
+        return text.substring(0, best).trim() + "\n" + text.substring(best).trim();
+    }
+
+    private static boolean isPunctBreak(String text, int i) {
+        return i > 0 && ",;:.!?".indexOf(text.charAt(i - 1)) >= 0 && text.charAt(i) == ' ';
     }
 }

@@ -185,16 +185,22 @@ private void startSubtitleTranscription() {
     subtitleTranscriptionStarted = true;
     File requestedFile = videoFile;
 
-    subtitleService.transcribe(requestedFile, segments -> {
-        javafx.application.Platform.runLater(() -> {
+    subtitleService.transcribe(requestedFile,
+        newSegments -> javafx.application.Platform.runLater(() -> {
             if (videoFile != requestedFile) {
                 return;
             }
-
-            subtitleSegments = segments;
+            List<SubtitleService.SubtitleSegment> combined = new java.util.ArrayList<>(subtitleSegments);
+            combined.addAll(newSegments);
+            subtitleSegments = combined;
             updateSubtitle(currentTimestampUs);
-        });
-    });
+        }),
+        error -> javafx.application.Platform.runLater(() -> {
+            // Allow a retry the next time subtitles are toggled on.
+            if (videoFile == requestedFile) {
+                subtitleTranscriptionStarted = false;
+            }
+        }));
 }
 
 private void updateSubtitle(long timestampUs) {

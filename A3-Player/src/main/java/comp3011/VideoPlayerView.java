@@ -29,9 +29,11 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Line;
 import javafx.scene.shape.Polygon;
+import javafx.scene.shape.Rectangle;
 import javafx.scene.shape.SVGPath;
 import javafx.scene.shape.StrokeLineCap;
 import javafx.scene.text.Text;
+import javafx.scene.text.TextAlignment;
 
 public class VideoPlayerView {
     private static final int ICON_SIZE = 28;
@@ -40,8 +42,10 @@ public class VideoPlayerView {
     private final Label statusLabel = new Label("No video loaded");
     private final Label tooltipLabel = new Label();
     private final Pane tooltipLayer = new Pane();
+
     private final StackPane videoPane;
     private final StackPane root;
+
     private final Button startOverButton;
     private final Button backFiveButton;
     private final Button pausePlayButton;
@@ -49,26 +53,51 @@ public class VideoPlayerView {
     private final Button stopButton;
     private final Button audioButton;
     private final Button subtitleButton;
+
     private final Text subtitleText = new Text();
+    private final Rectangle subtitleBackground = new Rectangle(724, 65);
 
     public VideoPlayerView() {
         imageView.setPreserveRatio(true);
         imageView.setSmooth(false);
 
+        // White subtitle text.
         subtitleText.setFill(Color.WHITE);
         subtitleText.setStroke(Color.BLACK);
-        subtitleText.setStrokeWidth(2);
+        subtitleText.setStrokeWidth(1);
         subtitleText.setStyle("-fx-font-size: 22px; -fx-font-family: SansSerif;");
-        subtitleText.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
-        subtitleText.setWrappingWidth(600);
+        subtitleText.setTextAlignment(TextAlignment.CENTER);
+        subtitleText.setWrappingWidth(700);
         subtitleText.setVisible(false);
 
-        videoPane = new StackPane(imageView, subtitleText);
-        StackPane.setAlignment(subtitleText, Pos.BOTTOM_CENTER);
-        StackPane.setMargin(subtitleText, new Insets(0, 20, 20, 20));
+        // Black rectangle behind subtitles.
+        subtitleBackground.setFill(Color.BLACK);
+        subtitleBackground.setOpacity(0.8);
+        subtitleBackground.setVisible(false);
+
+        StackPane subtitleBox = new StackPane(
+        subtitleBackground,
+        subtitleText
+);
+
+// Keep the subtitle box at a fixed size
+subtitleBox.setMinSize(724, 65);
+subtitleBox.setPrefSize(724, 65);
+subtitleBox.setMaxSize(724, 65);
+
+// Position it at the bottom
+videoPane = new StackPane(imageView, subtitleBox);
+videoPane.setAlignment(Pos.BOTTOM_CENTER);
+
+StackPane.setAlignment(imageView, Pos.CENTER);
+StackPane.setAlignment(subtitleBox, Pos.BOTTOM_CENTER);
+
+StackPane.setMargin(subtitleBox, new Insets(0, 0, 20, 0));
+
         videoPane.setStyle("-fx-background-color: black;");
         videoPane.setMinSize(0, 0);
         videoPane.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
+
         imageView.fitWidthProperty().bind(videoPane.widthProperty());
         imageView.fitHeightProperty().bind(videoPane.heightProperty());
 
@@ -93,8 +122,9 @@ public class VideoPlayerView {
                 forwardFiveButton,
                 stopButton,
                 audioButton,
-                statusLabel,
-                subtitleButton);
+                subtitleButton,
+                statusLabel
+        );
 
         controls.setPadding(new Insets(10));
 
@@ -149,13 +179,17 @@ public class VideoPlayerView {
     }
 
     public void showSubtitle(String text) {
-        subtitleText.setText(text);
-        subtitleText.setVisible(!text.isBlank());
+        boolean visible = text != null && !text.isBlank();
+
+        subtitleText.setText(visible ? text : "");
+        subtitleText.setVisible(visible);
+        subtitleBackground.setVisible(visible);
     }
 
     public void hideSubtitle() {
-        subtitleText.setVisible(false);
         subtitleText.setText("");
+        subtitleText.setVisible(false);
+        subtitleBackground.setVisible(false);
     }
 
     public void setVideoDisplaySize(double width, double height) {
@@ -184,8 +218,6 @@ public class VideoPlayerView {
         subtitleButton.setDisable(disabled);
     }
 
-    // There are a bunch of tooltip handling methods starting from here. We want to use tooltips so that people with
-    // mouse/trackpads can learn what the hotkeys are and hopefully just use them instead, because they are easy/fast.
     private void setButtonTooltips() {
         setButtonTooltip(startOverButton, "[HOME]");
         setButtonTooltip(backFiveButton, "[LEFT]");
@@ -200,11 +232,13 @@ public class VideoPlayerView {
         button.setOnMouseEntered(event -> {
             showTooltip(text, event.getSceneX(), event.getSceneY());
         });
+
         button.setOnMouseMoved(event -> {
             if (tooltipLabel.isVisible()) {
                 moveTooltip(event.getSceneX(), event.getSceneY());
             }
         });
+
         button.setOnMouseExited(_ -> hideTooltip());
         button.setOnMousePressed(_ -> hideTooltip());
     }
@@ -215,13 +249,15 @@ public class VideoPlayerView {
 
         tooltipLabel.setVisible(false);
         tooltipLabel.setMouseTransparent(true);
+
         tooltipLabel.setStyle(
                 "-fx-background-color: #ffffdc;"
-                        + "-fx-border-color: #8a8a8a;"
-                        + "-fx-border-width: 1;"
-                        + "-fx-padding: 4 7 4 7;"
-                        + "-fx-font-size: 12px;"
-                        + "-fx-text-fill: black;");
+                + "-fx-border-color: #8a8a8a;"
+                + "-fx-border-width: 1;"
+                + "-fx-padding: 4 7 4 7;"
+                + "-fx-font-size: 12px;"
+                + "-fx-text-fill: black;"
+        );
     }
 
     private void showTooltip(String text, double sceneX, double sceneY) {
@@ -235,12 +271,25 @@ public class VideoPlayerView {
     }
 
     private void moveTooltip(double sceneX, double sceneY) {
-        Point2D point = tooltipLayer.sceneToLocal(sceneX + 12, sceneY + 16);
-        double maxX = Math.max(0, tooltipLayer.getWidth() - tooltipLabel.getWidth() - 2);
-        double maxY = Math.max(0, tooltipLayer.getHeight() - tooltipLabel.getHeight() - 2);
+        Point2D point = tooltipLayer.sceneToLocal(
+                sceneX + 12,
+                sceneY + 16
+        );
+
+        double maxX = Math.max(
+                0,
+                tooltipLayer.getWidth() - tooltipLabel.getWidth() - 2
+        );
+
+        double maxY = Math.max(
+                0,
+                tooltipLayer.getHeight() - tooltipLabel.getHeight() - 2
+        );
+
         tooltipLabel.relocate(
                 Math.max(0, Math.min(point.getX(), maxX)),
-                Math.max(0, Math.min(point.getY(), maxY)));
+                Math.max(0, Math.min(point.getY(), maxY))
+        );
     }
 
     private void hideTooltip() {
@@ -258,8 +307,6 @@ public class VideoPlayerView {
         return button;
     }
 
-    // Decided to hand code icons here instead of using pre-drawn assets/resources, since the icons are simple and
-    // universally recognised and this one they will look better on different DPI displays.
     private Node createLoopIcon(boolean clockwise, String text) {
         Pane pane = new Pane();
         pane.setMinSize(ICON_SIZE, ICON_SIZE);
@@ -275,7 +322,9 @@ public class VideoPlayerView {
                 : "M 5 14 "
                         + "C 5 19 9 23 14 23 "
                         + "C 19 23 23 19 23 14 "
-                        + "C 23 10.5 21 7.5 18 6");
+                        + "C 23 10.5 21 7.5 18 6"
+        );
+
         loop.setFill(null);
         loop.setStroke(Color.BLACK);
         loop.setStrokeWidth(2.25);
@@ -284,8 +333,8 @@ public class VideoPlayerView {
         Polygon arrowHead = clockwise
                 ? new Polygon(18, 5, 11.5, 1.5, 11.5, 8.5)
                 : new Polygon(10, 5, 16.5, 1.5, 16.5, 8.5);
-        arrowHead.setFill(Color.BLACK);
 
+        arrowHead.setFill(Color.BLACK);
         pane.getChildren().addAll(loop, arrowHead);
 
         if (text != null) {
@@ -302,7 +351,6 @@ public class VideoPlayerView {
         return pane;
     }
 
-    // Simple two vertical bars 'pause' icon.
     private Canvas createPauseIcon() {
         Canvas canvas = new Canvas(ICON_SIZE, ICON_SIZE);
         GraphicsContext gc = canvas.getGraphicsContext2D();
@@ -312,7 +360,6 @@ public class VideoPlayerView {
         return canvas;
     }
 
-    // Simple right facing equilateral triangle 'play' icon.
     private Canvas createPlayIcon() {
         Canvas canvas = new Canvas(ICON_SIZE, ICON_SIZE);
         GraphicsContext gc = canvas.getGraphicsContext2D();
@@ -320,11 +367,11 @@ public class VideoPlayerView {
         gc.fillPolygon(
                 new double[] { 10, 10, 21 },
                 new double[] { 7, 21, 14 },
-                3);
+                3
+        );
         return canvas;
     }
 
-    // Simple square 'stop' icon.
     private Canvas createStopIcon() {
         Canvas canvas = new Canvas(ICON_SIZE, ICON_SIZE);
         GraphicsContext gc = canvas.getGraphicsContext2D();
@@ -333,7 +380,6 @@ public class VideoPlayerView {
         return canvas;
     }
 
-    // Kind of speaker looking thing ...
     private Node createAudioIcon(boolean audioEnabled) {
         Pane pane = new Pane();
         pane.setMinSize(ICON_SIZE, ICON_SIZE);
@@ -346,13 +392,21 @@ public class VideoPlayerView {
                 16, 6,
                 16, 22,
                 10, 17,
-                5, 17);
+                5, 17
+        );
+
         speaker.setFill(Color.BLACK);
         pane.getChildren().add(speaker);
 
         if (audioEnabled) {
-            SVGPath innerWave = audioWave("M 18 11 C 20 12.5 20 15.5 18 17");
-            SVGPath outerWave = audioWave("M 20.5 8 C 24 11.25 24 16.75 20.5 20");
+            SVGPath innerWave = audioWave(
+                    "M 18 11 C 20 12.5 20 15.5 18 17"
+            );
+
+            SVGPath outerWave = audioWave(
+                    "M 20.5 8 C 24 11.25 24 16.75 20.5 20"
+            );
+
             pane.getChildren().addAll(innerWave, outerWave);
         } else {
             Line slashDown = audioLine(19, 9, 25, 19);
@@ -363,7 +417,6 @@ public class VideoPlayerView {
         return pane;
     }
 
-    // Little helper for different radius waves coming out of the speaker.
     private SVGPath audioWave(String content) {
         SVGPath wave = new SVGPath();
         wave.setContent(content);
@@ -374,8 +427,12 @@ public class VideoPlayerView {
         return wave;
     }
 
-    // Helper to draw a cross over the speaker indicating that we're muted.
-    private Line audioLine(double startX, double startY, double endX, double endY) {
+    private Line audioLine(
+            double startX,
+            double startY,
+            double endX,
+            double endY
+    ) {
         Line line = new Line(startX, startY, endX, endY);
         line.setStroke(Color.BLACK);
         line.setStrokeWidth(2.0);
