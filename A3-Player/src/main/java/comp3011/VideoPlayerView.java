@@ -30,7 +30,7 @@ import javafx.scene.shape.Line;
 import javafx.scene.shape.Polygon;
 import javafx.scene.shape.SVGPath;
 import javafx.scene.shape.StrokeLineCap;
-
+import javafx.scene.text.Text;
 /**
  * The view part of the video player model-view-controller architecture.
  *
@@ -57,12 +57,24 @@ public class VideoPlayerView {
     private final Button forwardFiveButton;
     private final Button stopButton;
     private final Button audioButton;
+    private final Button subtitleButton;
+    private final Text subtitleText = new Text();
 
     public VideoPlayerView() {
         imageView.setPreserveRatio(true);
         imageView.setSmooth(false);
 
-        videoPane = new StackPane(imageView);
+        subtitleText.setFill(Color.WHITE);
+        subtitleText.setStroke(Color.BLACK);
+        subtitleText.setStrokeWidth(2);
+        subtitleText.setStyle("-fx-font-size: 22px; -fx-font-family: SansSerif;");
+        subtitleText.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
+        subtitleText.setWrappingWidth(600);
+        subtitleText.setVisible(false);
+
+        videoPane = new StackPane(imageView, subtitleText);
+        StackPane.setAlignment(subtitleText, Pos.BOTTOM_CENTER);
+        StackPane.setMargin(subtitleText, new Insets(0, 20, 20, 20));
         videoPane.setStyle("-fx-background-color: black;");
         videoPane.setMinSize(0, 0);
         videoPane.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
@@ -75,6 +87,9 @@ public class VideoPlayerView {
         forwardFiveButton = iconButton(createLoopIcon(true, "5"));
         stopButton = iconButton(createStopIcon());
         audioButton = iconButton(createAudioIcon(false));
+        Label ccIcon = new Label("CC");
+        ccIcon.setStyle("-fx-font-size: 15px; -fx-font-weight: bold;");
+        subtitleButton = iconButton(ccIcon);
         setPlaybackControlsDisabled(true);
 
         HBox controls = new HBox(
@@ -85,7 +100,8 @@ public class VideoPlayerView {
                 forwardFiveButton,
                 stopButton,
                 audioButton,
-                statusLabel);
+                statusLabel,
+                subtitleButton);
 
         controls.setPadding(new Insets(10));
 
@@ -126,6 +142,9 @@ public class VideoPlayerView {
     public Button getAudioButton() {
         return audioButton;
     }
+    public Button getSubtitleButton() {
+    return subtitleButton;
+    }
 
     public void setStatus(String status) {
         statusLabel.setText(status);
@@ -133,6 +152,15 @@ public class VideoPlayerView {
 
     public void setImage(Image image) {
         imageView.setImage(image);
+    }
+    public void showSubtitle(String text) {
+    subtitleText.setText(text);
+    subtitleText.setVisible(true);
+    }
+
+    public void hideSubtitle() {
+    subtitleText.setVisible(false);
+    subtitleText.setText("");
     }
 
     public void setVideoDisplaySize(double width, double height) {
