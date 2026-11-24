@@ -30,6 +30,7 @@ public class AdminController {
             double serverUptimeSeconds
     ) {}
     public record GlobalStatsResponse(long inputTokens, long outputTokens) {}
+    public record GlobalUsageResponse(double usage) {}
     // uptime end point
     @GetMapping({"/api/v1/uptime","/api/v1/admin/uptime"})
     public UptimeResponse fetchUptime() {
@@ -47,6 +48,11 @@ public class AdminController {
     public GlobalStatsResponse fetchStats() {
         return new GlobalStatsResponse(statisticsService.getInputTokens(), statisticsService.getOutputTokens());
     }
+    //total audio usage endpoint
+    @GetMapping("/api/v1/global/usage")
+    public GlobalUsageResponse fetchUsage() {
+        return new GlobalUsageResponse(statisticsService.getUsageSeconds());
+}
     // graceful shut down endpoint
     @PostMapping("/api/v1/admin/shutdown")
     public ResponseEntity<?> triggerShutdown() {

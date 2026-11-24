@@ -37,6 +37,7 @@ public class SpeechController {
             );
             statsService.addTokens(
                     result.inputTokens(),result.outputTokens());
+                    statsService.addUsageSeconds(result.durationSeconds());
 
             return ResponseEntity.ok(
                     Map.of("message", result.text())
@@ -67,7 +68,7 @@ public class SpeechController {
             );
             statsService.addTokens(
                     result.inputTokens(), result.outputTokens());
-
+                    statsService.addUsageSeconds(result.durationSeconds());
             var filteredSegments = result.segments()
                    .stream()
                    .filter(segment -> !(segment.noSpeechProb() > 0.6
