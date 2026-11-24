@@ -44,8 +44,10 @@ public class VideoPlayerApp extends Application {
         this.stage = stage;
 
         controller = new VideoPlayerController(
-                commandLineController.isAudioRequested(),
-                this::setVideoSize, commandLineController.getFrameEffects());
+            commandLineController.isAudioRequested(),
+            commandLineController.isSubtitleRequested(),
+            this::setVideoSize,
+            commandLineController.getFrameEffects());
 
         Scene scene = new Scene(controller.getView().getRoot());
         controller.installKeyboardShortcuts(scene);

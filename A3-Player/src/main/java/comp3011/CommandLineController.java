@@ -28,6 +28,7 @@ public class CommandLineController {
 
     private boolean helpRequested;
     private boolean audioRequested;
+    private boolean subtitleRequested;
     private boolean maximiseRequested;
     private Integer displayId;
     private File videoFile;
@@ -70,6 +71,9 @@ public class CommandLineController {
 
     public boolean isAudioRequested() {
         return audioRequested;
+    }
+    public boolean isSubtitleRequested() {
+    return subtitleRequested;
     }
 
     public boolean isMaximiseRequested() {
@@ -122,6 +126,7 @@ public class CommandLineController {
                     case 'm' -> frameEffects.add("m");
                     case 'b' -> frameEffects.add("b");
                     case 'p' -> frameEffects.add("p");
+                    case 'S' -> subtitleRequested = true;
                     default -> errorMessage = "Unknown option: -" + option;
                 }
 
@@ -163,6 +168,7 @@ private void addLongEffect(String arg) {
         case "--mottle-frames" -> frameEffects.add("m");
         case "--bleed-frames" -> frameEffects.add("b");
         case "--pepper-frames" -> frameEffects.add("p");
+        case "--subtitle-frames" -> subtitleRequested = true;
         default -> errorMessage = "Unknown option: " + arg;
     }
 }
@@ -182,6 +188,7 @@ private void printHelp() {
     System.out.println("Options:");
     System.out.println("  -h, --help         Show this help message");
     System.out.println("  -a, --audio        Play audio");
+    System.out.println("  -S, --subtitle-frames  Add speech-to-text subtitles to frames");
     System.out.println("  -x, --maximise     Open the player maximised");
     System.out.println("  -1, --monitor-1    Open the player on display 1");
     System.out.println("  -2, --monitor-2    Open the player on display 2");
