@@ -1,10 +1,11 @@
+
 /*
  * Starter code supplied for Adelaide University COMP3011 Assignment 2.
  * Students are free to modify this file for assessment purposes.
- * 
+ *
  * Authors:
  *   1. Simon Ratcliffe, in collaboration with GPT-5.6 Terra
- *   2. <student name and student number insert here upon modification>
+ *   2. Ritisha Nayyar, a1948388
  *
  * Copyright 2026 Simon Ratcliffe
  */
@@ -31,17 +32,7 @@ import javafx.scene.shape.Polygon;
 import javafx.scene.shape.SVGPath;
 import javafx.scene.shape.StrokeLineCap;
 import javafx.scene.text.Text;
-/**
- * The view part of the video player model-view-controller architecture.
- *
- * <p>
- * This is the JavaFX presentation layer for the video player. It builds the
- * scene graph containing the video surface, playback controls, status display,
- * and tooltips. It exposes controls and display-update methods for
- * {@link VideoPlayerController}, but contains no playback logic (which all lives
- * in the controller).
- * </p>
- */
+
 public class VideoPlayerView {
     private static final int ICON_SIZE = 28;
 
@@ -87,9 +78,11 @@ public class VideoPlayerView {
         forwardFiveButton = iconButton(createLoopIcon(true, "5"));
         stopButton = iconButton(createStopIcon());
         audioButton = iconButton(createAudioIcon(false));
+
         Label ccIcon = new Label("CC");
         ccIcon.setStyle("-fx-font-size: 15px; -fx-font-weight: bold;");
         subtitleButton = iconButton(ccIcon);
+
         setPlaybackControlsDisabled(true);
 
         HBox controls = new HBox(
@@ -142,8 +135,9 @@ public class VideoPlayerView {
     public Button getAudioButton() {
         return audioButton;
     }
+
     public Button getSubtitleButton() {
-    return subtitleButton;
+        return subtitleButton;
     }
 
     public void setStatus(String status) {
@@ -153,14 +147,15 @@ public class VideoPlayerView {
     public void setImage(Image image) {
         imageView.setImage(image);
     }
+
     public void showSubtitle(String text) {
-    subtitleText.setText(text);
-    subtitleText.setVisible(true);
+        subtitleText.setText(text);
+        subtitleText.setVisible(!text.isBlank());
     }
 
     public void hideSubtitle() {
-    subtitleText.setVisible(false);
-    subtitleText.setText("");
+        subtitleText.setVisible(false);
+        subtitleText.setText("");
     }
 
     public void setVideoDisplaySize(double width, double height) {
@@ -186,6 +181,7 @@ public class VideoPlayerView {
         forwardFiveButton.setDisable(disabled);
         stopButton.setDisable(disabled);
         audioButton.setDisable(disabled);
+        subtitleButton.setDisable(disabled);
     }
 
     // There are a bunch of tooltip handling methods starting from here. We want to use tooltips so that people with
@@ -197,6 +193,7 @@ public class VideoPlayerView {
         setButtonTooltip(forwardFiveButton, "[RIGHT]");
         setButtonTooltip(stopButton, "[ESC]");
         setButtonTooltip(audioButton, "[A]");
+        setButtonTooltip(subtitleButton, "[S]");
     }
 
     private void setButtonTooltip(Button button, String text) {
@@ -274,11 +271,11 @@ public class VideoPlayerView {
                 ? "M 10 6 "
                         + "C 7 7.5 5 10.5 5 14 "
                         + "C 5 19 9 23 14 23 "
-                        + "C 19 23 23 19 23 14 " // ~3/4 circle bezier curve empty top right
+                        + "C 19 23 23 19 23 14 "
                 : "M 5 14 "
                         + "C 5 19 9 23 14 23 "
                         + "C 19 23 23 19 23 14 "
-                        + "C 23 10.5 21 7.5 18 6"); // ~3/4 circle bezier curve empty top right
+                        + "C 23 10.5 21 7.5 18 6");
         loop.setFill(null);
         loop.setStroke(Color.BLACK);
         loop.setStrokeWidth(2.25);

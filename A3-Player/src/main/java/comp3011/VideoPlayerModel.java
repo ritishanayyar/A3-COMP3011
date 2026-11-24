@@ -50,6 +50,12 @@ public class VideoPlayerModel {
     private final Consumer<String> statusChangedHandler;
     private final BiConsumer<Boolean, Boolean> playbackStateChangedHandler;
     private final Consumer<Boolean> audioOutputStateChangedHandler;
+    private final Consumer<String> subtitleChangedHandler;
+    private final SubtitleService subtitleService = new SubtitleService();
+    private List<SubtitleService.SubtitleSegment> subtitleSegments = List.of();
+    private boolean subtitlesEnabled;
+    private boolean subtitleTranscriptionStarted;
+    private String currentSubtitleText = "";   
 
     // This is the critical wiring that allows the framework (JavaFX) to call
     // into our model logic every time it goes around its event loop. Every GUI
@@ -87,6 +93,8 @@ public class VideoPlayerModel {
 
     public VideoPlayerModel(
             boolean audioEnabled,
+            boolean subtitleEnabled,
+            Consumer<String> subtitleChangedHandler,
             List<String> frameEffects,
             BiConsumer<Integer, Integer> videoSizeChangedHandler,
             Consumer<Image> frameReadyHandler,
@@ -94,6 +102,8 @@ public class VideoPlayerModel {
             BiConsumer<Boolean, Boolean> playbackStateChangedHandler,
             Consumer<Boolean> audioOutputStateChangedHandler) {
         audioOutputEnabled = audioEnabled;
+        subtitlesEnabled = subtitleEnabled;
+        this.subtitleChangedHandler = subtitleChangedHandler;
         this.frameEffects = List.copyOf(frameEffects);
         this.videoSizeChangedHandler = videoSizeChangedHandler;
         this.frameReadyHandler = frameReadyHandler;
@@ -101,13 +111,21 @@ public class VideoPlayerModel {
         this.playbackStateChangedHandler = playbackStateChangedHandler;
         this.audioOutputStateChangedHandler = audioOutputStateChangedHandler;
     }
-
     public void play(File file) {
-        videoFile = file;
-        videoDurationUs = NO_SEEK_REQUEST;
-        videoFrameDurationUs = 0;
-        startPlayback(0, false, NO_SEEK_REQUEST);
+       videoFile = file;
+       videoDurationUs = NO_SEEK_REQUEST;
+       videoFrameDurationUs = 0;
+
+       subtitleSegments = List.of();
+       subtitleTranscriptionStarted = false;
+       currentSubtitleText = "";
+       subtitleChangedHandler.accept("");
+
+       startPlayback(0, false, NO_SEEK_REQUEST);
+       if (subtitlesEnabled) {
+        startSubtitleTranscription();
     }
+}
 
     public void startOver() {
         if (videoFile == null) {
@@ -145,16 +163,72 @@ public class VideoPlayerModel {
         notifyPlaybackStateChanged();
     }
 
-    public void toggleAudioOutput() {
-        audioOutputEnabled = !audioOutputEnabled;
-        pendingAudio.clear();
-        flushAudioOutput();
-        notifyAudioOutputStateChanged();
+    public void toggleSubtitles() {
+    subtitlesEnabled = !subtitlesEnabled;
+
+    if (!subtitlesEnabled) {
+        currentSubtitleText = "";
+        subtitleChangedHandler.accept("");
+    } else {
+        if (!subtitleTranscriptionStarted) {
+            startSubtitleTranscription();
+        }
+        updateSubtitle(currentTimestampUs);
+    }
+}
+
+private void startSubtitleTranscription() {
+    if (videoFile == null || subtitleTranscriptionStarted) {
+        return;
     }
 
-    public boolean isAudioOutputEnabled() {
-        return audioOutputEnabled;
+    subtitleTranscriptionStarted = true;
+    File requestedFile = videoFile;
+
+    subtitleService.transcribe(requestedFile, segments -> {
+        javafx.application.Platform.runLater(() -> {
+            if (videoFile != requestedFile) {
+                return;
+            }
+
+            subtitleSegments = segments;
+            updateSubtitle(currentTimestampUs);
+        });
+    });
+}
+
+private void updateSubtitle(long timestampUs) {
+    String text = "";
+
+    if (subtitlesEnabled) {
+        double seconds = timestampUs / 1_000_000.0;
+
+        for (SubtitleService.SubtitleSegment segment : subtitleSegments) {
+            if (seconds >= segment.start() && seconds <= segment.end()) {
+                text = segment.text();
+                break;
+            }
+        }
     }
+
+    if (!text.equals(currentSubtitleText)) {
+        currentSubtitleText = text;
+        subtitleChangedHandler.accept(text);
+    }
+}
+
+public boolean isAudioOutputEnabled() {
+    return audioOutputEnabled;
+}
+
+public void toggleAudioOutput() {
+    audioOutputEnabled = !audioOutputEnabled;
+    if (!audioOutputEnabled) {
+        flushAudioOutput();
+    }
+    notifyAudioOutputStateChanged();
+}
+
 
     public void stopPlayback() {
         closePlaybackResources();
@@ -333,6 +407,7 @@ public class VideoPlayerModel {
 
     private void displayPreparedFrame(FramePipeline.PreparedFrame frame, long logicalTimestampUs, long targetTimeNs) {
         currentTimestampUs = logicalTimestampUs;
+        updateSubtitle(logicalTimestampUs);
         relativeSeekBaseUs = NO_SEEK_REQUEST;
 
         // Dump some logging to the console once per second so that real time performance can be monitored.

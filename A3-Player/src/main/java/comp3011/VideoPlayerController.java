@@ -1,7 +1,7 @@
 /*
  * Starter code supplied for Adelaide University COMP3011 Assignment 2.
  * Students are free to modify this file for assessment purposes.
- * 
+ *
  * Authors:
  *   1. Simon Ratcliffe, in collaboration with GPT-5.6 Terra
  *   2. <Ritisha Nayyar, a1948388)>
@@ -18,14 +18,6 @@ import javafx.scene.image.Image;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 
-/**
- * The controller part of the video player model-view-controller architecture.
- * 
- * <p>
- * Wires up events from the {@link VideoPlayerView} to the {@link VideoPlayerModel}.
- * This includes button actions, keyboard shortcuts and display resizing.
- * </p>
- */
 public class VideoPlayerController {
     private final VideoPlayerModel model;
     private final VideoPlayerView view;
@@ -35,11 +27,15 @@ public class VideoPlayerController {
     public VideoPlayerController(
         boolean audioEnabled, boolean subtitleEnabled,
         BiConsumer<Integer, Integer> videoSizeChangedHandler, List<String> frameEffects) {
+
         this.view = new VideoPlayerView();
         this.videoSizeChangedHandler = videoSizeChangedHandler;
         this.subtitlesEnabled = subtitleEnabled;
+
         model = new VideoPlayerModel(
                 audioEnabled,
+                subtitleEnabled,
+                this::onSubtitleChanged,
                 frameEffects,
                 this::onVideoSizeChanged,
                 this::onFrameReady,
@@ -54,6 +50,7 @@ public class VideoPlayerController {
         view.getStopButton().setOnAction(_ -> stopAndExit());
         view.getAudioButton().setOnAction(_ -> toggleAudioOutput());
         view.getSubtitleButton().setOnAction(_ -> toggleSubtitles());
+
         view.showAudioEnabled(model.isAudioOutputEnabled());
     }
 
@@ -116,12 +113,15 @@ public class VideoPlayerController {
     private void toggleAudioOutput() {
         model.toggleAudioOutput();
     }
-    private void toggleSubtitles() {
-    subtitlesEnabled = !subtitlesEnabled;
 
-    if (!subtitlesEnabled) {
-        view.hideSubtitle();
-    }}
+    private void toggleSubtitles() {
+        subtitlesEnabled = !subtitlesEnabled;
+        model.toggleSubtitles();
+
+        if (!subtitlesEnabled) {
+            view.hideSubtitle();
+        }
+    }
 
     private void stopAndExit() {
         model.stopPlayback();
@@ -134,6 +134,14 @@ public class VideoPlayerController {
 
     private void onFrameReady(Image image) {
         view.setImage(image);
+    }
+
+    private void onSubtitleChanged(String subtitle) {
+        if (subtitlesEnabled) {
+            view.showSubtitle(subtitle);
+        } else {
+            view.hideSubtitle();
+        }
     }
 
     private void onStatusChanged(String status) {
