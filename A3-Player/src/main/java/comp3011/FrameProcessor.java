@@ -1,37 +1,65 @@
-ssignment2/VideoPlayerSingleThread
-open -e src/main/java/comp3011/FrameProcessor.java 
-(base) ritishanayyar@Ritishas-MacBook-Air VideoPlayerSingleThread % 
-(base) ritishanayyar@Ritishas-MacBook-Air VideoPlayerSingleThread % cd ~/Documents/uni/year2/Sem2/CCP/Assignment2/COMP3011-Assignment2/VideoPlayerSingleThread
-open -e src/main/java/comp3011/FrameProcessor.java
-(base) ritishanayyar@Ritishas-MacBook-Air VideoPlayerSingleThread % mvn clean compile
-[INFO] Scanning for projects...
-[INFO] 
-[INFO] ------------------< comp3011:VideoPlayerSingleThread >------------------
-[INFO] Building VideoPlayerSingleThread0.1
-[INFO]   from pom.xml
-[INFO] --------------------------------[ jar ]---------------------------------
-[WARNING] 6 problems were encountered while building the effective model for org.openjfx:javafx-graphics:jar:21 during dependency collection step for project (use -X to see details)
-[INFO] 
-[INFO] --- clean:3.2.0:clean (default-clean) @ VideoPlayerSingleThread ---
-[INFO] Deleting /Users/ritishanayyar/Documents/uni/year2/Sem2/CCP/Assignment2/COMP3011-Assignment2/VideoPlayerSingleThread/target
-[INFO] 
-[INFO] --- resources:3.4.0:resources (default-resources) @ VideoPlayerSingleThread ---
-[INFO] skip non existing resourceDirectory /Users/ritishanayyar/Documents/uni/year2/Sem2/CCP/Assignment2/COMP3011-Assignment2/VideoPlayerSingleThread/src/main/resources
-[INFO] 
-[INFO] --- compiler:3.15.0:compile (default-compile) @ VideoPlayerSingleThread ---
-[INFO] Recompiling the module because of changed source code.
-[INFO] Compiling 21 source files with javac [debug release 25] to target/classes
-[INFO] ------------------------------------------------------------------------
-[INFO] BUILD FAILURE
-[INFO] ------------------------------------------------------------------------
-[INFO] Total time:  0.596 s
-[INFO] Finished at: 2026-10-27T11:58:46+10:30
-[INFO] ------------------------------------------------------------------------
-[ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.15.0:compile (default-compile) on project VideoPlayerSingleThread: Fatal error compiling: error: release version 25 notsupported -> [Help 1]
-[ERROR] 
-[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
-[ERROR] Re-run Maven using the -X switch to enable full debug logging.
-[ERROR] 
-[ERROR] For more information about the errors and possible solutions, please read the following articles:
-[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoExecutionException
-(base) ritishanayyar@Ritishas-MacBook-Air VideoPlayerSingleThread % 
+/*
+ * Starter code supplied for Adelaide University COMP3011 Assignment 2.
+ * Students are free to modify this file for assessment purposes.
+ * 
+ * Authors:
+ *   1. Simon Ratcliffe, in collaboration with GPT-5.6 Terra
+ *   2. Ritisha Nayyar, a1948388
+ *
+ * Copyright 2026 Simon Ratcliffe
+ */
+package comp3011;
+
+import java.nio.charset.StandardCharsets;
+import java.util.zip.CRC32;
+
+import org.bytedeco.javacv.Frame;
+
+/**
+ * Base class for all the video player's frame-based compositing effects.
+ *
+ * <p>
+ * {@link VideoPlayerModel} initialises each processor once with video metadata,
+ * then invokes {@link #process(Frame, InfoFrame)} for every image frame in a set order
+ * before it is converted for display. Note that all FrameProcessors should be written
+ * to be deterministic - that is they apply the same effect to the same frame number of
+ * the same media name, but otherwise can look 'random'. This allows for the reliable
+ * determination of accurately applied effects in the correct order free of any race
+ * conditions, frame overwrites or frame tearing etc. Some helper methods are provided
+ * for this.
+ * </p>
+ */
+public abstract class FrameProcessor {
+    protected InfoVideo videoInfo;
+
+    public FrameProcessor() {
+    }
+
+    public void initialise(InfoVideo videoInfo) throws Exception {
+        this.videoInfo = videoInfo;
+    }
+
+    // Obtain a unique seed for this media name and effect instance index. That is, for a given media name, say
+    // 'movie.mp4' and a given position in the list of effects being applied, this will return a unique and different
+    // seed for each effect. This is useful for creating the illusion of randomness whilst keeping everything
+    // deterministic.
+    protected int saltedMediaSeed(String mediaName, int instanceIndex) {
+        return hashMediaName(mediaName) + instanceIndex;
+    }
+
+    private int hashMediaName(String mediaName) {
+        CRC32 crc = new CRC32();
+        byte[] bytes = mediaName.getBytes(StandardCharsets.UTF_8);
+        crc.update(bytes, 0, bytes.length);
+        return (int) crc.getValue();
+    }
+
+    public abstract void process(Frame frame, InfoFrame info) throws Exception;
+    private int instanceIndex;
+public void setInstanceIndex(int instanceIndex){
+    this.instanceIndex = instanceIndex;
+    }
+    protected int instanceIndex(){
+return instanceIndex;
+    }
+}

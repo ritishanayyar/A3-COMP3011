@@ -12,7 +12,7 @@ package comp3011;
 
 import java.io.File;
 import java.util.ArrayList;
-import java.u.                       c                           til.List;
+import java.util.List;
 
 /**
  * Created in the VideoPlayerApp's main function to receive and parse the video player's command-line arguments.
