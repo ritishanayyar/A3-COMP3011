@@ -1,3 +1,4 @@
+
 package com.example.assignment1.controller;
 
 import com.example.assignment1.service.SpeechToTextClient;
@@ -13,11 +14,12 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import java.time.Instant;
 import java.util.Map;
+
 @RestController
 public class SpeechController {
-    private static final Logger log =
+        private static final Logger log =
             LoggerFactory.getLogger(SpeechController.class);
-    private final StatisticsService statsService;
+        private final StatisticsService statsService;
     private final SpeechToTextClient speechToText;
     public SpeechController(
             StatisticsService statsService,
@@ -28,27 +30,64 @@ public class SpeechController {
     @PostMapping("/api/transcribe")
     public ResponseEntity<?> handleAudio(
             @RequestParam("audio") MultipartFile file) {
+        try {
+            TranscriptionResult result = speechToText.transcribe(
+                    file.getBytes(),
+                    "recording.webm"
+            );
+            statsService.addTokens(
+                    result.inputTokens(),result.outputTokens());
 
-        try {TranscriptionResult result =
-                    speechToText.transcribe(
-                            file.getBytes(),
-                            "recording.webm"
-                    );
-                    statsService.addTokens(
-                    result.inputTokens(),
-                    result.outputTokens()
-            );return ResponseEntity.ok(
+            return ResponseEntity.ok(
                     Map.of("message", result.text())
             );
 
         } catch (Exception e) {
-            log.warn(
-                    "Transcription request failed: {}",e.getMessage()
-            );
+            log.warn("Transcription request failed: {}", e.getMessage());
             return ResponseEntity
                     .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("timestamp",Instant.now().toString(),"status",500,"error","Internal Server Error",
-                    "message","Transcription failed. Please try again.","path","/api/transcribe"
+                    .body(Map.of(
+                            "timestamp", Instant.now().toString(), "status", 500, "error", "Internal Server Error",
+                            "message", "Transcription failed. Please try again.", "path", "/api/transcribe"
+                    ));
+        }
+    }
+
+    @PostMapping("/api/v1/subtitles")
+    public ResponseEntity<?> handleSubtitles(
+            @RequestParam("audio") MultipartFile file) {
+        try {
+            String filename = file.getOriginalFilename();
+            if (filename == null || filename.isBlank()) {
+                filename = "recording.webm";
+            }
+            TranscriptionResult result = speechToText.transcribe(
+                    file.getBytes(),
+                    filename
+            );
+            statsService.addTokens(
+                    result.inputTokens(), result.outputTokens());
+
+            var filteredSegments = result.segments()
+                   .stream()
+                   .filter(segment -> !(segment.noSpeechProb() > 0.6
+                           && segment.avgLogProb() < -1.0))
+                   .toList();
+                return ResponseEntity.ok(
+                         Map.of("text", result.text(),
+                         "durationSeconds", result.durationSeconds(),
+                         "segments", filteredSegments) );
+
+        } catch (Exception e) { 
+            log.warn("Subtitle request failed: {}", e.getMessage());
+
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of(
+                            "timestamp", Instant.now().toString(),"status", 500,
+                            "error", "Internal Server Error",
+                            "message", "Subtitle transcription failed. Please try again.",
+                            "path", "/api/v1/subtitles"
                     ));
         }
     }
