@@ -18,18 +18,16 @@ import org.bytedeco.javacv.Frame;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-/**
- * Extracts the audio of a video, sends it to the local subtitle web server in
- * chunks, and returns timed subtitle segments as each chunk completes.
- */
+//Extracts the audio of a video, sends it to the local subtitle web server inchunks, and returns timed subtitle segments as each chunk completes.
+
 public class SubtitleService {
 
     public record SubtitleSegment(double start, double end, String text) {}
 
     private static final String SERVER_URL = "http://localhost:8080/api/v1/subtitles";
-    private static final int SAMPLE_RATE = 16000;      // 16 kHz mono keeps uploads small (~1.9 MB/min)
+    private static final int SAMPLE_RATE = 16000;      //16 kHz mono
     private static final int CHANNELS = 1;
-    private static final int CHUNK_SECONDS = 120;      // ~3.8 MB per request, well under the 25 MB limit
+    private static final int CHUNK_SECONDS = 120;      
     private static final int MAX_LINE_CHARS = 42;
     private static final int MAX_LINES = 2;
     private static final double MIN_SHOW_SECONDS = 1.0;
@@ -40,10 +38,8 @@ public class SubtitleService {
             .build();
     private final ObjectMapper mapper = new ObjectMapper();
 
-    /**
-     * Runs on a background thread. onSegments is called (off the FX thread) after each chunk
-     * with the new segments; onError is called once if anything fails.
-     */
+    //Runs on a background thread. onSegments is called (off the FX thread) after each chnk with the new segments; onError is called once if anything fails.
+
     public void transcribe(File videoFile, Consumer<List<SubtitleSegment>> onSegments, Consumer<Exception> onError) {
         Thread thread = new Thread(() -> {
             try {
@@ -88,7 +84,7 @@ public class SubtitleService {
                 grabber.stop();
                 grabber.release();
             } catch (Exception ignored) {
-                // media may already be gone (e.g. USB removed)
+                // media may already be gone 
             }
         }
 
@@ -163,9 +159,8 @@ public class SubtitleService {
         out.write(v); out.write(v >> 8);
     }
 
-    // ---- Subtitle formatting: <=42 chars/line, <=2 lines, 1-7 s on screen ----
 
-    /** Splits one Whisper segment into displayable subtitles with timings proportional to text length. */
+    // Splits one Whisper segment into displayable subtitles with timings proportional to text length
     static List<SubtitleSegment> splitIntoSubtitles(double start, double end, String text) {
         List<String> pieces = new ArrayList<>();
         String remaining = text.trim();
@@ -191,8 +186,6 @@ public class SubtitleService {
         }
         return out;
     }
-
-    /** Prefers breaking after sentence punctuation, then commas, then spaces, within the limit. */
     private static int bestBreak(String s, int limit) {
         int limitIdx = Math.min(limit, s.length() - 1);
         for (String set : new String[] {".!?", ",;:", " "}) {
@@ -203,9 +196,7 @@ public class SubtitleService {
             }
         }
         return limitIdx;
-    }
-
-    /** Breaks text into at most two lines of at most 42 chars, preferring a break after punctuation. */
+    } 
     private static String wrapLines(String text) {
         if (text.length() <= MAX_LINE_CHARS) {
             return text;
